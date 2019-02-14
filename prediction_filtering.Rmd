@@ -1,0 +1,158 @@
+---
+title: "predictions_filtering"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+
+```{r}
+library("qdapTools")
+```
+```{r}
+#uploading tf files
+setwd("~/miRNA/tf-mirna/predictions/MEME/mouse_core_1000_jaspar")
+predictions=read.table("fimo.txt",header=T,sep="\t")
+setwd("~/miRNA/tf-mirna/predictions/MEME/human_core_1000_jaspar")
+predictions_human=read.table("fimo.txt",header=F,sep="\t")
+```
+
+```{r}
+#mouse df filtering (10%FDR) & counting TF occurences
+predictions$motif_alt_id=as.factor(gsub("\\(|\\)|\\.","",predictions$motif_alt_id)) 
+predictions=predictions[predictions$q.value<0.1,] #10%FDR
+tf_list=as.character(levels(predictions$motif_alt_id))
+tf_list=gsub("\\(|\\)|\\.","",tf_list)
+tf_count=list()
+for (i in seq(from=1,to=length(levels(predictions$motif_alt_id)))){
+  a=tf_list[i]
+  tf_count[[a]]=length(grep(paste0(paste0("\\",levels(predictions$motif_alt_id)[i]),"\\b"),predictions$motif_alt_id,fixed=F))
+}
+tf_count_df=list2df(tf_count,col1="count",col2="tf")
+tf_count_df_fil=tf_count_df[tf_count_df$count>5,]
+tf_merged=merge(tf_count_df_fil,predictions,by.x="tf",by.y="motif_alt_id")
+```
+```{r}
+#human df filtering (10%FDR) & counting TF occurences
+colnames(predictions_human)=colnames(predictions)
+predictions_human$motif_alt_id=as.factor(gsub("\\(|\\)|\\.","",predictions_human$motif_alt_id)) 
+predictions_human=predictions_human[predictions_human$q.value<0.1,] #10%FDR
+tf_list_human=as.character(levels(predictions_human$motif_alt_id))
+tf_list_human=gsub("\\(|\\)|\\.","",tf_list_human)
+tf_count_h=list()
+for (i in seq(from=1,to=length(levels(predictions_human$motif_alt_id)))){
+  a=tf_list_human[i]
+  tf_count_h[[a]]=length(grep(paste0(paste0("\\",levels(predictions_human$motif_alt_id)[i]),"\\b"),predictions_human$motif_alt_id,fixed=F))
+}
+tf_count_df_human=list2df(tf_count_h,col1="count",col2="tf")
+tf_count_df_fil_human=tf_count_df_human[tf_count_df_human$count>5,]
+tf_merged_human=merge(tf_count_df_fil_human,predictions_human,by.x="tf",by.y="motif_alt_id")
+```
+```{r}
+#merging human & mouse
+tf_merged_sub=tf_merged[,c(1,4)]
+tf_merged_sub$sequence_name=substr(tf_merged_sub$sequence_name,1,7)
+tf_merged_sub=tf_merged_sub[!duplicated(tf_merged_sub),]
+tf_merged_sub_human=tf_merged_human[,c(1,4)]
+tf_merged_sub_human$sequence_name=substr(tf_merged_sub_human$sequence_name,1,6)
+tf_merged_sub_human=tf_merged_sub_human[!duplicated(tf_merged_sub_human),]
+colnames(tf_merged_sub_human)=c("tf","sequence_name_human")
+tf_merged_m_h=merge(tf_merged_sub,tf_merged_sub_human,by="tf")
+tf_merged_m_h=tf_merged_m_h[!duplicated(tf_merged_m_h),]
+tf=unique(tf_merged_m_h$tf)
+tf
+
+
+```
+```{r}
+tf[52]="PPARG"
+tf[53]="RXRA"
+tf
+```
+```{r}
+setwd("~/miRNA/tf-mirna/HSC_expression/GSE78853")
+res_final=read.table("res_final",header=T)
+tf_ex=tf[tf%in%res_final$Gene_name]
+tf_ex=tf_ex[1:27]
+tf_ex
+```
+```{r}
+res_final=res_final[res_final$padj<0.05,]
+tf_ex_padj=tf_ex[tf_ex%in%res_final$Gene_name]
+tf_ex_padj
+```
+```{r}
+setwd("~/miRNA/tf-mirna/HSC_expression/GSE93313")
+unspec=read.table("2d_vs_3d.csv",header=T,sep=",")
+unspec=unspec[unspec$padj>0.05,]
+spec_2d=read.table("2d_vs_transwell.csv",header=T,sep=",")
+spec_2d=spec_2d[spec_2d$padj<0.05,]
+spec_3d=read.table("3d_vs_transwell.csv",header=T,sep=",")
+spec_3d=spec_3d[spec_3d$padj<0.05,]
+```
+
+```{r}
+spec_2d=data.frame(lapply(spec_2d, function(v) {
+  toupper(v)}))
+tf_ex_padj_sp1=tf_ex_padj[tf_ex_padj%in%spec_2d$id]
+tf_ex_padj_sp1
+```
+```{r}
+spec_3d=data.frame(lapply(spec_3d, function(v) {
+  toupper(v)}))
+tf_ex_padj_sp2=tf_ex_padj_sp1[tf_ex_padj_sp1%in%spec_3d$id]
+tf_ex_padj_sp2
+```
+```{r}
+unspec=data.frame(lapply(unspec, function(v) {
+  toupper(v)}))
+tf_ex_padj_un=tf_ex_padj_sp2[tf_ex_padj_sp2%in%unspec$id]
+tf_ex_padj_un
+```
+```{r}
+predictions_out=predictions[,2:3]
+predictions_human_out=predictions_human[,2:3]
+colnames(predictions_human_out)=colnames(predictions_out)
+predictions_out$sequence_name=substr(predictions_out$sequence_name,5,7)
+predictions_human_out$sequence_name=substr(predictions_human_out$sequence_name,1,3)
+predictions_out=predictions_out[predictions_out$motif_alt_id%in%"Pparg::Rxra"|predictions_out$motif_alt_id%in%"PPARG"|predictions_out$motif_alt_id%in%"EGR1",]
+predictions_human_out=predictions_human_out[predictions_human_out$motif_alt_id%in%"Pparg::Rxra"|predictions_human_out$motif_alt_id%in%"PPARG"|predictions_human_out$motif_alt_id%in%"EGR1",]
+predictions_out=unique(predictions_out)
+write.table(predictions_out,"predictions_mouse",row.names = F,quote = F)
+write.table(predictions_human_out,"predictions_human",row.names = F,quote = F)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
